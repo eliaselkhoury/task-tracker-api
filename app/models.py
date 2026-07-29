@@ -6,7 +6,7 @@ Three shapes per resource:
   * TaskResponse - what the API always sends back.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -46,6 +46,13 @@ class TaskBase(BaseModel):
     priority: TaskPriority = TaskPriority.medium
     assignee: Optional[str] = Field(default=None, max_length=80)
 
+    # A calendar day, not a timestamp: users mean "by the end of this day", and
+    # a date avoids picking an hour and a timezone for them. Deliberately not
+    # validated against today - a task that was already due last week is a
+    # legitimate thing to enter, and should show up as overdue rather than be
+    # refused. See docs/midcourse/mini-adr.md, decisions 1 and 3.
+    due_date: Optional[date] = None
+
     @field_validator("title")
     @classmethod
     def title_must_not_be_blank(cls, value: str) -> str:
@@ -78,6 +85,11 @@ class TaskUpdate(BaseModel):
     priority: Optional[TaskPriority] = None
     assignee: Optional[str] = Field(default=None, max_length=80)
 
+    # Sending `"due_date": null` explicitly clears the date; omitting the key
+    # entirely leaves it untouched. `exclude_unset` in storage.update_task is
+    # what makes those two cases distinguishable.
+    due_date: Optional[date] = None
+
     @field_validator("title")
     @classmethod
     def title_must_not_be_blank(cls, value: Optional[str]) -> Optional[str]:
@@ -101,6 +113,12 @@ class TaskResponse(TaskBase):
     created_at: datetime
     updated_at: datetime
 
+    # Derived on read from due_date, status and the server's current date - it
+    # is never stored, because a stored value goes stale at midnight. The
+    # backend owns this so the card badge and the ?overdue= filter can never
+    # disagree. See docs/midcourse/mini-adr.md, decision 2.
+    is_overdue: bool = False
+
 
 def utc_now() -> datetime:
     """Current time as a timezone-aware UTC timestamp.
@@ -109,3 +127,12 @@ def utc_now() -> datetime:
     a single function instead of chasing datetime.now() calls.
     """
     return datetime.now(timezone.utc)
+
+
+def today() -> date:
+    """The server's current date, used as the reference point for 'overdue'.
+
+    Separate from utc_now() so a test can freeze the day without freezing the
+    created_at/updated_at timestamps it is not interested in.
+    """
+    return utc_now().date()

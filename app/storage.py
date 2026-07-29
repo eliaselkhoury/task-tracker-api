@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from app.business_rules import validate_status_transition
+from app.business_rules import is_task_overdue, validate_status_transition
 from app.core.config import settings
 from app.models import (
     TaskCreate,
@@ -55,8 +55,15 @@ def _write_all(records: list[dict[str, Any]]) -> None:
 
 
 def _to_response(record: dict[str, Any]) -> TaskResponse:
-    """Validate a stored dict back into the response model."""
-    return TaskResponse.model_validate(record)
+    """Validate a stored dict back into the response model.
+
+    `is_overdue` is filled in here rather than read from the file: it depends on
+    today's date, so a stored copy would be wrong the next day.
+    """
+    task = TaskResponse.model_validate(record)
+    return task.model_copy(
+        update={"is_overdue": is_task_overdue(task.due_date, task.status)}
+    )
 
 
 def add_task(payload: TaskCreate) -> TaskResponse:
@@ -77,22 +84,29 @@ def list_tasks(
     status: Optional[TaskStatus] = None,
     priority: Optional[TaskPriority] = None,
     assignee: Optional[str] = None,
+    overdue: Optional[bool] = None,
 ) -> list[TaskResponse]:
     """Return stored tasks, optionally narrowed by the given filters.
 
-    Filters combine with AND. Unknown/None filters are ignored.
+    Filters combine with AND. A filter left as None is ignored.
+
+    `overdue` is tri-state: None means "do not filter", True means overdue only,
+    False means everything that is not overdue - which includes tasks that have
+    no due date at all.
     """
-    records = _read_all()
+    tasks = [_to_response(record) for record in _read_all()]
 
     if status is not None:
-        records = [r for r in records if r.get("status") == status.value]
+        tasks = [t for t in tasks if t.status == status]
     if priority is not None:
-        records = [r for r in records if r.get("priority") == priority.value]
+        tasks = [t for t in tasks if t.priority == priority]
     if assignee is not None:
         needle = assignee.strip().casefold()
-        records = [r for r in records if (r.get("assignee") or "").casefold() == needle]
+        tasks = [t for t in tasks if (t.assignee or "").casefold() == needle]
+    if overdue is not None:
+        tasks = [t for t in tasks if t.is_overdue == overdue]
 
-    return [_to_response(r) for r in records]
+    return tasks
 
 
 def get_task(task_id: str) -> TaskResponse:

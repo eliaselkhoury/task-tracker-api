@@ -56,9 +56,17 @@ def list_tasks(
     status: Optional[TaskStatus] = None,
     priority: Optional[TaskPriority] = None,
     assignee: Optional[str] = None,
+    overdue: Optional[bool] = None,
 ) -> list[TaskResponse]:
-    """List tasks, optionally filtered. Filters combine with AND."""
-    return storage.list_tasks(status=status, priority=priority, assignee=assignee)
+    """List tasks, optionally filtered. Filters combine with AND.
+
+    `overdue=true` returns only tasks past their due date that are not done;
+    `overdue=false` returns everything else, including tasks with no due date.
+    Omit it to get all tasks.
+    """
+    return storage.list_tasks(
+        status=status, priority=priority, assignee=assignee, overdue=overdue
+    )
 
 
 @app.get("/tasks/{task_id}", response_model=TaskResponse, tags=["tasks"])

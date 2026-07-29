@@ -4,7 +4,10 @@ Keeping these out of the route handlers means they can be unit-tested
 without spinning up an HTTP client.
 """
 
-from app.models import TaskStatus
+from datetime import date
+from typing import Optional
+
+from app.models import TaskStatus, today
 
 
 class BusinessRuleError(ValueError):
@@ -33,3 +36,28 @@ def validate_status_transition(current: TaskStatus, new: TaskStatus) -> None:
             f"cannot move a task from '{current.value}' to '{new.value}'; "
             f"allowed next values are: {allowed}"
         )
+
+
+def is_task_overdue(
+    due_date: Optional[date],
+    status: TaskStatus,
+    reference_date: Optional[date] = None,
+) -> bool:
+    """Return True when a task's deadline has passed and it is not finished.
+
+    Three rules, each of which has a test:
+      * no due date  -> never overdue
+      * due today    -> not overdue (the day is not over yet)
+      * status done  -> not overdue, even if the date has passed
+
+    Args:
+        due_date: the task's deadline, or None.
+        status: the task's current status.
+        reference_date: what counts as "today". Defaults to the server's date;
+            passed explicitly by tests so they do not depend on the real clock.
+    """
+    if due_date is None:
+        return False
+    if status is TaskStatus.done:
+        return False
+    return due_date < (reference_date or today())

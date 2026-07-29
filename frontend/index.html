@@ -18,6 +18,16 @@
         </button>
       </header>
 
+      <!-- Board controls. Every change here re-queries the API rather than
+           filtering the copy already in the browser, so the UI can never
+           disagree with the backend's filter rules. -->
+      <div class="board-controls">
+        <label class="control control-check">
+          <input id="filter-overdue" type="checkbox" />
+          <span>Overdue only</span>
+        </label>
+      </div>
+
       <!-- Non-blocking status line for loading, empty and error states. -->
       <p id="board-status" class="board-status" role="status" aria-live="polite"></p>
 
@@ -60,6 +70,9 @@
             <option value="medium">Medium</option>
             <option value="high">High</option>
           </select>
+
+          <label for="field-due-date">Due date</label>
+          <input id="field-due-date" name="due_date" type="date" />
 
           <label for="field-assignee">Assignee</label>
           <input

@@ -31,6 +31,7 @@ const el = {
   status: document.getElementById("board-status"),
   toast: document.getElementById("toast"),
   newTaskButton: document.getElementById("new-task-button"),
+  filterOverdue: document.getElementById("filter-overdue"),
   backdrop: document.getElementById("modal-backdrop"),
   modalTitle: document.getElementById("modal-title"),
   form: document.getElementById("task-form"),
@@ -46,6 +47,18 @@ function escapeHtml(value) {
     (char) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]
   );
+}
+
+/**
+ * Format an API date ("2026-08-04") for a card badge ("Aug 4").
+ *
+ * Parsed field-by-field on purpose: `new Date("2026-08-04")` is read as UTC
+ * midnight, which renders as the previous day for anyone west of Greenwich.
+ */
+function formatDueDate(isoDate) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const local = new Date(year, month - 1, day);
+  return local.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function setStatus(message, isError = false) {
@@ -115,8 +128,21 @@ async function apiRequest(path, options = {}) {
   return body;
 }
 
+/** Read the control bar into the query parameters the API expects. */
+function currentFilters() {
+  const filters = {};
+  if (el.filterOverdue.checked) filters.overdue = "true";
+  return filters;
+}
+
+/** Turn a filter object into a query string, or "" when nothing is set. */
+function buildQuery(filters) {
+  const query = new URLSearchParams(filters).toString();
+  return query ? `?${query}` : "";
+}
+
 const api = {
-  listTasks: () => apiRequest("/tasks"),
+  listTasks: (filters = {}) => apiRequest(`/tasks${buildQuery(filters)}`),
   createTask: (payload) =>
     apiRequest("/tasks", { method: "POST", body: JSON.stringify(payload) }),
   updateTask: (id, payload) =>
@@ -126,18 +152,33 @@ const api = {
 
 /* ------------------------------------------------------------- 3. rendering */
 
+/**
+ * The due-date badge for a card, or "" when the task has no due date.
+ *
+ * `is_overdue` comes from the API and is not recomputed here: the badge and the
+ * "Overdue only" filter have to agree, so only the server decides what is late.
+ */
+function dueDateBadge(task) {
+  if (!task.due_date) return "";
+  const label = formatDueDate(task.due_date);
+  return task.is_overdue
+    ? `<span class="pill pill-overdue">Overdue &middot; ${label}</span>`
+    : `<span class="pill pill-due">Due ${label}</span>`;
+}
+
 function cardHtml(task) {
   const description = task.description
     ? escapeHtml(task.description)
     : "No description";
 
   return `
-    <article class="card" draggable="true" data-id="${task.id}">
+    <article class="card${task.is_overdue ? " is-overdue" : ""}" draggable="true" data-id="${task.id}">
       <h3 class="card-title">${escapeHtml(task.title)}</h3>
       <p class="card-description">${description}</p>
       <div class="card-meta">
         <div class="card-badges">
           <span class="pill pill-${task.priority}">${PRIORITY_LABELS[task.priority]}</span>
+          ${dueDateBadge(task)}
           ${task.assignee ? `<span class="card-assignee">${escapeHtml(task.assignee)}</span>` : ""}
         </div>
         <div class="card-actions">
@@ -175,15 +216,22 @@ function render() {
   ).join("");
 }
 
-/** Fetch tasks and repaint, handling loading / empty / error states. */
+/** Fetch tasks with the active filters and repaint. */
 async function refresh() {
+  const filters = currentFilters();
+  const isFiltered = Object.keys(filters).length > 0;
+
   setStatus("Loading tasks…");
   try {
-    tasks = await api.listTasks();
+    tasks = await api.listTasks(filters);
     render();
-    setStatus(
-      tasks.length ? "" : "No tasks yet. Use “New Task” to create the first one."
-    );
+    if (tasks.length) {
+      setStatus(isFiltered ? `${tasks.length} matching task(s).` : "");
+    } else if (isFiltered) {
+      setStatus("No tasks match the current filters.");
+    } else {
+      setStatus("No tasks yet. Use “New Task” to create the first one.");
+    }
   } catch (error) {
     tasks = [];
     render();
@@ -272,6 +320,8 @@ function openModal(task = null) {
   el.form.description.value = task && task.description ? task.description : "";
   el.form.status.value = task ? task.status : "todo";
   el.form.priority.value = task ? task.priority : "medium";
+  // The API's YYYY-MM-DD is exactly what <input type="date"> expects.
+  el.form.due_date.value = task && task.due_date ? task.due_date : "";
   el.form.assignee.value = task && task.assignee ? task.assignee : "";
 
   el.backdrop.hidden = false;
@@ -295,6 +345,10 @@ function readForm() {
   const assignee = el.form.assignee.value.trim();
   payload.description = description || null;
   payload.assignee = assignee || null;
+
+  // An empty date input is "no deadline", sent as an explicit null so a PATCH
+  // clears an existing due date instead of silently keeping it.
+  payload.due_date = el.form.due_date.value || null;
 
   return payload;
 }
@@ -352,6 +406,7 @@ async function onBoardClick(event) {
 /* --------------------------------------------------------------- 6. boot */
 
 el.newTaskButton.addEventListener("click", () => openModal());
+el.filterOverdue.addEventListener("change", refresh);
 el.close.addEventListener("click", closeModal);
 el.cancel.addEventListener("click", closeModal);
 el.form.addEventListener("submit", onSubmit);
