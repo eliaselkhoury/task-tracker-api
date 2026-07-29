@@ -6,7 +6,7 @@ Run with: uvicorn app.main:app --reload
 
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import storage
@@ -57,15 +57,26 @@ def list_tasks(
     priority: Optional[TaskPriority] = None,
     assignee: Optional[str] = None,
     overdue: Optional[bool] = None,
+    q: Optional[str] = Query(
+        default=None,
+        max_length=200,
+        description="Case-insensitive substring search over title and description.",
+    ),
 ) -> list[TaskResponse]:
-    """List tasks, optionally filtered. Filters combine with AND.
+    """List tasks, optionally filtered. Every filter supplied combines with AND.
 
     `overdue=true` returns only tasks past their due date that are not done;
     `overdue=false` returns everything else, including tasks with no due date.
     Omit it to get all tasks.
+
+    No matches is a successful empty list, not a 404.
     """
     return storage.list_tasks(
-        status=status, priority=priority, assignee=assignee, overdue=overdue
+        status=status,
+        priority=priority,
+        assignee=assignee,
+        overdue=overdue,
+        q=q,
     )
 
 

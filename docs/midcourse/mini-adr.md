@@ -76,9 +76,12 @@ the same amount of code and answers "what is *not* late?" too.
 baseline already had.
 
 **Why:** they answer different questions. `q` is "find me the card about auth".
-`assignee` is "show me Maria's column". Making `assignee` fuzzy would have
-silently changed a behaviour the baseline tests already pin down, and would make
-`assignee=Ma` match both `Maria` and `Marc`.
+`assignee` is "show me Maria's column". Making `assignee` fuzzy would silently
+change baseline behaviour, and `assignee=Mar` would match both `Maria` and
+`Marc`.
+
+The baseline enforced this in code but had no test for it, so the change would
+have passed the suite. Feature 2 adds two tests that pin it.
 
 **Rejected:** one fuzzy matcher applied to every text field (AI's suggestion).
 

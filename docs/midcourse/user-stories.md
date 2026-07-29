@@ -164,9 +164,13 @@ that I did not accept.
 1. **It wanted `assignee` search to be a partial, fuzzy match.** The suggested
    code applied the same "substring, case-insensitive" rule to `assignee` as to
    `q`. But `assignee` was already an **exact** (case-insensitive) filter in the
-   Module 2 baseline, and quietly widening it would have changed existing
-   behaviour and broken `test_list_tasks_filters_by_assignee`. I kept `assignee`
-   exact and let `q` be the fuzzy one — free-text search is `q`'s job.
+   Module 2 baseline, so accepting that draft would have silently changed
+   existing behaviour — and `assignee=Mar` would then match both `Maria` and
+   `Marc`. I kept `assignee` exact, let `q` be the fuzzy one, and noticed while
+   reviewing that the baseline pinned this behaviour in code but had **no test**
+   for it. I added `test_list_tasks_filters_by_assignee` and
+   `test_assignee_filter_is_case_insensitive_but_still_exact` so the next
+   refactor cannot widen it by accident.
 2. **It wanted to add a `filters` object to the response body.** The draft
    changed `GET /tasks` from returning a JSON array to returning
    `{"items": [...], "filters": {...}}`. That is a breaking change to the

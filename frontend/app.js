@@ -31,7 +31,12 @@ const el = {
   status: document.getElementById("board-status"),
   toast: document.getElementById("toast"),
   newTaskButton: document.getElementById("new-task-button"),
+  filterSearch: document.getElementById("filter-search"),
+  filterStatus: document.getElementById("filter-status"),
+  filterPriority: document.getElementById("filter-priority"),
+  filterAssignee: document.getElementById("filter-assignee"),
   filterOverdue: document.getElementById("filter-overdue"),
+  filterClear: document.getElementById("filter-clear"),
   backdrop: document.getElementById("modal-backdrop"),
   modalTitle: document.getElementById("modal-title"),
   form: document.getElementById("task-form"),
@@ -128,10 +133,24 @@ async function apiRequest(path, options = {}) {
   return body;
 }
 
-/** Read the control bar into the query parameters the API expects. */
+/**
+ * Read the control bar into the query parameters the API expects.
+ *
+ * Blank controls are left out entirely rather than sent as empty strings, so
+ * "no filter" and "filter for nothing" stay distinguishable on the server.
+ */
 function currentFilters() {
   const filters = {};
+
+  const search = el.filterSearch.value.trim();
+  const assignee = el.filterAssignee.value.trim();
+
+  if (search) filters.q = search;
+  if (el.filterStatus.value) filters.status = el.filterStatus.value;
+  if (el.filterPriority.value) filters.priority = el.filterPriority.value;
+  if (assignee) filters.assignee = assignee;
   if (el.filterOverdue.checked) filters.overdue = "true";
+
   return filters;
 }
 
@@ -228,7 +247,7 @@ async function refresh() {
     if (tasks.length) {
       setStatus(isFiltered ? `${tasks.length} matching task(s).` : "");
     } else if (isFiltered) {
-      setStatus("No tasks match the current filters.");
+      setStatus("No tasks match the current filters. Use “Clear” to see them all.");
     } else {
       setStatus("No tasks yet. Use “New Task” to create the first one.");
     }
@@ -406,7 +425,33 @@ async function onBoardClick(event) {
 /* --------------------------------------------------------------- 6. boot */
 
 el.newTaskButton.addEventListener("click", () => openModal());
+
+/** Run `fn` only once the user has stopped typing for `delay` ms. */
+function debounce(fn, delay) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
+// Free-text inputs are debounced so one keystroke is not one request. The
+// dropdowns and the checkbox fire immediately - a single deliberate change.
+const debouncedRefresh = debounce(refresh, 250);
+el.filterSearch.addEventListener("input", debouncedRefresh);
+el.filterAssignee.addEventListener("input", debouncedRefresh);
+el.filterStatus.addEventListener("change", refresh);
+el.filterPriority.addEventListener("change", refresh);
 el.filterOverdue.addEventListener("change", refresh);
+
+el.filterClear.addEventListener("click", () => {
+  el.filterSearch.value = "";
+  el.filterAssignee.value = "";
+  el.filterStatus.value = "";
+  el.filterPriority.value = "";
+  el.filterOverdue.checked = false;
+  refresh();
+});
 el.close.addEventListener("click", closeModal);
 el.cancel.addEventListener("click", closeModal);
 el.form.addEventListener("submit", onSubmit);

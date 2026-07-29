@@ -22,10 +22,49 @@
            filtering the copy already in the browser, so the UI can never
            disagree with the backend's filter rules. -->
       <div class="board-controls">
+        <label class="control control-search">
+          <span class="visually-hidden">Search</span>
+          <input
+            id="filter-search"
+            type="search"
+            placeholder="Search title or description…"
+            maxlength="200"
+          />
+        </label>
+
+        <label class="control">
+          <span>Status</span>
+          <select id="filter-status">
+            <option value="">Any</option>
+            <option value="todo">ToDo</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </label>
+
+        <label class="control">
+          <span>Priority</span>
+          <select id="filter-priority">
+            <option value="">Any</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </label>
+
+        <label class="control">
+          <span>Assignee</span>
+          <input id="filter-assignee" type="text" maxlength="80" placeholder="Exact name" />
+        </label>
+
         <label class="control control-check">
           <input id="filter-overdue" type="checkbox" />
           <span>Overdue only</span>
         </label>
+
+        <span class="controls-spacer"></span>
+
+        <button id="filter-clear" class="button button-small" type="button">Clear</button>
       </div>
 
       <!-- Non-blocking status line for loading, empty and error states. -->

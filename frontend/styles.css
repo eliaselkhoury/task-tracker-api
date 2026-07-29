@@ -160,6 +160,17 @@ body {
   flex: 1 1 auto;
 }
 
+/* Visible to screen readers, not on screen - the search box has a placeholder
+   but still needs a real label. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* --- Status line -------------------------------------------------------- */
 
 .board-status {

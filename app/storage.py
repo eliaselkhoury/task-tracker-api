@@ -85,6 +85,7 @@ def list_tasks(
     priority: Optional[TaskPriority] = None,
     assignee: Optional[str] = None,
     overdue: Optional[bool] = None,
+    q: Optional[str] = None,
 ) -> list[TaskResponse]:
     """Return stored tasks, optionally narrowed by the given filters.
 
@@ -93,6 +94,11 @@ def list_tasks(
     `overdue` is tri-state: None means "do not filter", True means overdue only,
     False means everything that is not overdue - which includes tasks that have
     no due date at all.
+
+    `q` is a case-insensitive substring search over title and description. It is
+    the only fuzzy filter: `assignee` stays an exact match, because "show me
+    Maria's tasks" and "find the card about auth" are different questions. See
+    docs/midcourse/mini-adr.md, decision 5.
     """
     tasks = [_to_response(record) for record in _read_all()]
 
@@ -105,6 +111,14 @@ def list_tasks(
         tasks = [t for t in tasks if (t.assignee or "").casefold() == needle]
     if overdue is not None:
         tasks = [t for t in tasks if t.is_overdue == overdue]
+    if q is not None and q.strip():
+        needle = q.strip().casefold()
+        tasks = [
+            t
+            for t in tasks
+            if needle in t.title.casefold()
+            or needle in (t.description or "").casefold()
+        ]
 
     return tasks
 
