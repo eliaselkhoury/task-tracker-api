@@ -1,0 +1,65 @@
+﻿=== behaviour contract ===
+(dates relative to today: past=-3d, today=+0d, future=+5d)
+
+--- health ---
+GET /health -> 200 {"status": "ok", "service": "task-tracker-api"}
+
+--- seed ---
+POST /tasks 'Fix auth bug' -> 201
+POST /tasks 'Review budget' -> 201
+POST /tasks 'Ship homepage redesign' -> 201
+POST /tasks 'Update readme' -> 201
+
+--- validation on create ---
+POST /tasks [blank title] -> 422
+POST /tasks [unknown priority] -> 422
+POST /tasks [malformed due_date] -> 422
+POST /tasks [impossible due_date] -> 422
+POST /tasks [past due_date is allowed] -> 201
+
+--- status transitions ---
+PATCH status=done         -> 409
+PATCH status=in_progress  -> 200
+PATCH status=done         -> 200
+PATCH status=todo         -> 409
+
+--- due date updates ---
+PATCH [move date                 ] -> 200 due_date='2026-08-08' is_overdue=False
+PATCH [unrelated patch keeps date] -> 200 due_date='2026-08-08' is_overdue=False
+PATCH [clear date                ] -> 200 due_date=None is_overdue=False
+PATCH [malformed date            ] -> 422 due_date=None is_overdue=None
+
+--- not found ---
+GET    /tasks/missing -> 404
+PATCH  /tasks/missing -> 404
+DELETE /tasks/missing -> 404
+
+--- list queries ---
+[no filters                        ] 200 n=5 ['Fix auth bug', 'Review budget', 'Ship homepage redesign', 'Update readme', 'Late']
+[status=todo                       ] 200 n=4 ['Fix auth bug', 'Review budget', 'Ship homepage redesign', 'Late']
+[priority=high                     ] 200 n=2 ['Fix auth bug', 'Ship homepage redesign']
+[assignee exact, case-insensitive  ] 200 n=2 ['Fix auth bug', 'Review budget']
+[assignee partial must NOT match   ] 200 n=0 []
+[overdue=true                      ] 200 n=2 ['Fix auth bug', 'Late']
+[overdue=false                     ] 200 n=3 ['Review budget', 'Ship homepage redesign', 'Update readme']
+[q title match                     ] 200 n=1 ['Fix auth bug']
+[q description-only match          ] 200 n=1 ['Fix auth bug']
+[q case-insensitive                ] 200 n=1 ['Fix auth bug']
+[q partial word                    ] 200 n=1 ['Fix auth bug']
+[q matches two tasks               ] 200 n=2 ['Review budget', 'Ship homepage redesign']
+[q no matches                      ] 200 n=0 []
+[q whitespace only                 ] 200 n=5 ['Fix auth bug', 'Review budget', 'Ship homepage redesign', 'Update readme', 'Late']
+[q + priority                      ] 200 n=1 ['Ship homepage redesign']
+[q + status (AND, empty)           ] 200 n=0 []
+[q + overdue                       ] 200 n=1 ['Fix auth bug']
+[all filters                       ] 200 n=1 ['Fix auth bug']
+[invalid priority                  ] 422
+[invalid status                    ] 422
+[invalid overdue                   ] 422
+
+--- is_overdue per task ---
+Fix auth bug               status=todo         due=2026-07-26   overdue=True
+Review budget              status=todo         due=2026-07-29   overdue=False
+Ship homepage redesign     status=todo         due=2026-08-03   overdue=False
+Update readme              status=done         due=None         overdue=False
+Late                       status=todo         due=2026-06-29   overdue=True

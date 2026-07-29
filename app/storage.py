@@ -11,7 +11,7 @@ functions that take and return Pydantic models.
 import json
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from app.business_rules import is_task_overdue, validate_status_transition
 from app.core.config import settings
@@ -100,27 +100,47 @@ def list_tasks(
     Maria's tasks" and "find the card about auth" are different questions. See
     docs/midcourse/mini-adr.md, decision 5.
     """
-    tasks = [_to_response(record) for record in _read_all()]
+    # Each active filter contributes one predicate; a task is returned only if
+    # it satisfies all of them. Collecting them first makes the AND explicit and
+    # means adding a filter is one append rather than another rebuild of the
+    # whole list.
+    predicates: list[Callable[[TaskResponse], bool]] = []
 
     if status is not None:
-        tasks = [t for t in tasks if t.status == status]
-    if priority is not None:
-        tasks = [t for t in tasks if t.priority == priority]
-    if assignee is not None:
-        needle = assignee.strip().casefold()
-        tasks = [t for t in tasks if (t.assignee or "").casefold() == needle]
-    if overdue is not None:
-        tasks = [t for t in tasks if t.is_overdue == overdue]
-    if q is not None and q.strip():
-        needle = q.strip().casefold()
-        tasks = [
-            t
-            for t in tasks
-            if needle in t.title.casefold()
-            or needle in (t.description or "").casefold()
-        ]
+        predicates.append(lambda task, want=status: task.status == want)
 
-    return tasks
+    if priority is not None:
+        predicates.append(lambda task, want=priority: task.priority == want)
+
+    if assignee is not None:
+        # Exact match, ignoring case and surrounding spaces.
+        predicates.append(
+            lambda task, want=assignee.strip().casefold(): (
+                (task.assignee or "").casefold() == want
+            )
+        )
+
+    if overdue is not None:
+        predicates.append(lambda task, want=overdue: task.is_overdue == want)
+
+    # A search of only spaces is not a search - treat it as absent.
+    if q is not None and q.strip():
+        predicates.append(
+            lambda task, want=q.strip().casefold(): (
+                want in task.title.casefold()
+                or want in (task.description or "").casefold()
+            )
+        )
+
+    # The `want=` default arguments above are not decoration: they bind each
+    # value at definition time. Closing over the loop-free but reassigned locals
+    # directly would make every predicate see the last value assigned, so
+    # `?assignee=Maria&q=auth` would compare the assignee against "auth".
+    return [
+        task
+        for task in (_to_response(record) for record in _read_all())
+        if all(predicate(task) for predicate in predicates)
+    ]
 
 
 def get_task(task_id: str) -> TaskResponse:
