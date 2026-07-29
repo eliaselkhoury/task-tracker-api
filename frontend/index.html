@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Task Board</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="board-header">
+        <div>
+          <h1>Task Board</h1>
+          <p class="subtitle">Drag tasks between columns to update their status.</p>
+        </div>
+        <button id="new-task-button" class="button button-primary" type="button">
+          New Task
+        </button>
+      </header>
+
+      <!-- Non-blocking status line for loading, empty and error states. -->
+      <p id="board-status" class="board-status" role="status" aria-live="polite"></p>
+
+      <section id="board" class="board">
+        <!-- Columns are rendered by app.js so the markup stays in one place. -->
+      </section>
+    </main>
+
+    <!-- Create/edit dialog. Hidden until the user opens it. -->
+    <div id="modal-backdrop" class="modal-backdrop" hidden>
+      <div
+        class="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
+        <button id="modal-close" class="modal-close" type="button" aria-label="Close">
+          &times;
+        </button>
+        <h2 id="modal-title">New Task</h2>
+        <p class="modal-subtitle">Fill in task details and save.</p>
+
+        <form id="task-form" novalidate>
+          <label for="field-title">Title</label>
+          <input id="field-title" name="title" type="text" maxlength="120" required />
+
+          <label for="field-description">Description</label>
+          <textarea id="field-description" name="description" rows="3" maxlength="1000"></textarea>
+
+          <label for="field-status">Status</label>
+          <select id="field-status" name="status">
+            <option value="todo">ToDo</option>
+            <option value="in_progress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+
+          <label for="field-priority">Priority</label>
+          <select id="field-priority" name="priority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+
+          <label for="field-assignee">Assignee</label>
+          <input
+            id="field-assignee"
+            name="assignee"
+            type="text"
+            maxlength="80"
+            placeholder="Assigned user"
+          />
+
+          <!-- Server-side validation errors surface here rather than in an alert. -->
+          <p id="form-error" class="form-error" role="alert" hidden></p>
+
+          <div class="modal-actions">
+            <button id="modal-cancel" class="button" type="button">Cancel</button>
+            <button class="button button-primary" type="submit">Save task</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Short-lived messages for drag-and-drop rejections and delete results. -->
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
