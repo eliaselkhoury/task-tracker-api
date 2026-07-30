@@ -110,6 +110,19 @@ in the real UI and not only in pytest.
 | 3.2 | Backend stopped, reload the page | Status line shows `Cannot reach the API. Is the backend running on http://127.0.0.1:8000 ?`, styled as an error, and the 3 columns still render — the board does not just sit silently empty ✅ |
 | 3.3 | Console across all checks | No errors, no warnings ✅ |
 
+### Modal close paths (added after a bug was reported — see section 6)
+
+| # | Check | Result |
+| - | ----- | ------ |
+| 4.1 | Modal on page load | Hidden (`display: none`, 0×0) ✅ |
+| 4.2 | Click **X** | Closes ✅ |
+| 4.3 | Click **Cancel** | Closes ✅ |
+| 4.4 | Press **Escape** | Closes ✅ |
+| 4.5 | Click the dimmed backdrop | Closes ✅ |
+| 4.6 | Click **inside** the dialog / on a field | Stays open — the backdrop guard still works ✅ |
+| 4.7 | Successful save | Closes, toast `Task created.`, new card on the board ✅ |
+| 4.8 | Toast and inline form error still show when unhidden | Toast `display: block`, 127×42; form error unaffected ✅ |
+
 ### Two notes on honest reporting
 
 - Malformed due dates (`31/12/2026`, `soon`) **cannot** be entered through the
@@ -133,8 +146,18 @@ predicate list applied with `all()` over a single pass of the store.
 `scripts/behavior_contract.py` drives the API through a fixed script — 4 seeded
 tasks, 5 validation cases, 4 status transitions, 4 due-date updates, 3 not-found
 cases, and **21 list queries** covering both features and their combinations —
-and prints every status code and result. All dates are relative to today, so the
-output is stable on any day it is run.
+and prints every status code and result.
+
+Dates are both *seeded* and *printed* relative to today (`today-3`, `today+5`),
+so the report is byte-stable on any day it is run. That was not true at first:
+the original version printed absolute ISO dates, and re-running it the next day
+produced a diff of twelve shifted date lines with every status code, result set
+and `overdue` value identical. The report was semantically stable but not
+byte-stable, which makes "diff it and expect no output" useless as a check. Fixed
+by adding `rel()`, and both captures below were regenerated with it — the
+"before" side by checking out `app/storage.py` from the pre-refactor commit
+(`5b42874`), confirming it contained none of the predicate code, capturing, and
+restoring.
 
 ```bash
 # on the working checkpoint, before refactoring
@@ -149,7 +172,7 @@ Compare-Object (Get-Content docs/midcourse/contract-before-refactor.txt) `
 ```
 
 ```
-contract IDENTICAL after restore
+IDENTICAL - refactor changed no behaviour
 ```
 
 Both captures are committed, so the claim is checkable rather than asserted.
@@ -180,11 +203,15 @@ POST /tasks [past due_date is allowed] -> 201
 [invalid priority                  ] 422
 
 --- is_overdue per task ---
-Fix auth bug               status=todo         due=2026-07-26   overdue=True
-Review budget              status=todo         due=2026-07-29   overdue=False
-Ship homepage redesign     status=todo         due=2026-08-03   overdue=False
+Fix auth bug               status=todo         due=today-3      overdue=True
+Review budget              status=todo         due=today        overdue=False
+Ship homepage redesign     status=todo         due=today+5      overdue=False
 Update readme              status=done         due=None         overdue=False
+Late                       status=todo         due=today-30     overdue=True
 ```
+
+Those last four lines are the whole overdue rule in one block: past date and not
+done is overdue, due *today* is not, and a `done` task never is.
 
 One honest correction: the first contract run reported
 `[all filters] 200 n=0 []`, which looked like a bug in the AND logic. It was a
@@ -300,7 +327,86 @@ Restored, re-ran: `68 passed`, and the contract diff returned
 
 ---
 
-## 6. Final state
+## 6. Bug found after the features were "done" — the modal would not close
+
+Reported by a user of the board, not caught by me: **the New Task dialog's X and
+Cancel buttons did nothing.**
+
+### What was actually wrong
+
+`closeModal()` sets `el.backdrop.hidden = true`, and that ran correctly every
+time. But the dialog stayed on screen:
+
+```
+hiddenAttrPresent: true      <- the attribute was set
+hiddenProp:        true      <- the property agreed
+computedDisplay:   "flex"    <- and yet it was still displayed
+boxOnScreen:       779x859   <- occupying the whole viewport
+```
+
+The browser's built-in rule is `[hidden] { display: none }` — a single attribute
+selector. My own `.modal-backdrop { display: flex }` is a **class** selector, so
+it wins on specificity and `hidden` was silently powerless. The buttons and
+their listeners were fine all along; the state changed and the CSS ignored it.
+
+The same cause meant the dialog was also over the board from page load.
+
+### Fix
+
+One rule in `frontend/styles.css`, applied globally rather than just to the
+backdrop so no future `display`-setting class can reintroduce it:
+
+```css
+[hidden] {
+  display: none !important;
+}
+```
+
+Re-verified all four close paths plus the paths that must **not** close —
+see checks 4.1–4.8 above.
+
+### Why my own verification missed it
+
+This is the useful part. I checked the modal in the browser and recorded it as
+working, because I asserted on the wrong thing:
+
+```js
+modalOpen: !document.getElementById('modal-backdrop').hidden   // -> false
+```
+
+That reads the `hidden` **property**, which was `true` exactly as the code
+intended. I was asserting that my own line of JavaScript had run, not that the
+user could no longer see the dialog. Every visibility bug that lives in CSS is
+invisible to a check like that.
+
+`get_page_text` did not catch it either: the tool reports the `<main>` element,
+and the modal markup sits outside `<main>`. Two independent checks agreed, and
+both were blind in the same way.
+
+What I should have asserted, and what checks 4.1–4.8 now use:
+
+```js
+getComputedStyle(backdrop).display === 'none' && rect.width === 0
+```
+
+**The lesson:** assert on what the user perceives — computed style and layout box
+— not on the state variable you just set. A test that only confirms your code ran
+will pass for any bug that lives downstream of it. This is the same shape as
+Break Test 2: 66 tests passed with a real bug present because none of them looked
+at the right thing.
+
+### Known gap
+
+There is no automated regression test for this. The project has no JavaScript
+test setup, and adding jsdom or a browser-driver toolchain for one assertion is
+out of proportion to a course project of this size. So it is recorded honestly
+as a manual check (4.1–4.8) with a comment in `styles.css` explaining why the
+rule exists, rather than claimed as covered. If the frontend grows past one file,
+a DOM test harness is the first thing it needs.
+
+---
+
+## 7. Final state
 
 ```bash
 pytest

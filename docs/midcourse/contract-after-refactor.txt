@@ -24,8 +24,8 @@ PATCH status=done         -> 200
 PATCH status=todo         -> 409
 
 --- due date updates ---
-PATCH [move date                 ] -> 200 due_date='2026-08-08' is_overdue=False
-PATCH [unrelated patch keeps date] -> 200 due_date='2026-08-08' is_overdue=False
+PATCH [move date                 ] -> 200 due_date=today+10 is_overdue=False
+PATCH [unrelated patch keeps date] -> 200 due_date=today+10 is_overdue=False
 PATCH [clear date                ] -> 200 due_date=None is_overdue=False
 PATCH [malformed date            ] -> 422 due_date=None is_overdue=None
 
@@ -58,8 +58,8 @@ DELETE /tasks/missing -> 404
 [invalid overdue                   ] 422
 
 --- is_overdue per task ---
-Fix auth bug               status=todo         due=2026-07-26   overdue=True
-Review budget              status=todo         due=2026-07-29   overdue=False
-Ship homepage redesign     status=todo         due=2026-08-03   overdue=False
+Fix auth bug               status=todo         due=today-3      overdue=True
+Review budget              status=todo         due=today        overdue=False
+Ship homepage redesign     status=todo         due=today+5      overdue=False
 Update readme              status=done         due=None         overdue=False
-Late                       status=todo         due=2026-06-29   overdue=True
+Late                       status=todo         due=today-30     overdue=True

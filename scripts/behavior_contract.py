@@ -35,6 +35,21 @@ def iso(offset_days: int) -> str:
     return (TODAY + timedelta(days=offset_days)).isoformat()
 
 
+def rel(value: object) -> str:
+    """Render a date the API returned as an offset from today, e.g. 'today-3'.
+
+    Printing absolute dates would make this report differ every calendar day,
+    which defeats the point of diffing it across a refactor. Offsets are what
+    the behaviour actually depends on.
+    """
+    if not value:
+        return str(value)
+    offset = (date.fromisoformat(str(value)) - TODAY).days
+    if offset == 0:
+        return "today"
+    return f"today{offset:+d}"
+
+
 # The fixed board every run starts from. Order matters: it is the order the API
 # returns tasks in.
 SEED = [
@@ -145,7 +160,8 @@ def main() -> None:
             body = response.json() if response.status_code == 200 else {}
             print(
                 f"PATCH [{label:<26}] -> {response.status_code} "
-                f"due_date={body.get('due_date')!r} is_overdue={body.get('is_overdue')!r}"
+                f"due_date={rel(body.get('due_date'))} "
+                f"is_overdue={body.get('is_overdue')!r}"
             )
         # Restore both fields this section changed, so the queries below see the
         # board as seeded and the "all filters" case is a real positive match.
@@ -181,7 +197,7 @@ def main() -> None:
         for task in client.get("/tasks").json():
             print(
                 f"{task['title']:<26} status={task['status']:<12} "
-                f"due={str(task['due_date']):<12} overdue={task['is_overdue']}"
+                f"due={rel(task['due_date']):<12} overdue={task['is_overdue']}"
             )
 
 

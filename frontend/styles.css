@@ -25,6 +25,15 @@
   box-sizing: border-box;
 }
 
+/* The `hidden` attribute must beat any class that sets `display`.
+   The browser's own [hidden] { display: none } is a single attribute selector,
+   so a class rule like `.modal-backdrop { display: flex }` overrides it and the
+   element stays on screen even while hidden is set - which made the modal's
+   close and cancel buttons look broken. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
