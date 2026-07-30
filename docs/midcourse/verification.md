@@ -395,9 +395,68 @@ will pass for any bug that lives downstream of it. This is the same shape as
 Break Test 2: 66 tests passed with a real bug present because none of them looked
 at the right thing.
 
+### A second bug hiding behind the first
+
+After committing the CSS fix I re-checked it on a plain page load and the modal
+was **still stuck open**. The rule was absent from the loaded stylesheet:
+
+```
+hiddenRuleOnPlainLoad: null
+onLoad:                VISIBLE
+```
+
+The file on disk was correct and the server was serving it correctly —
+`curl http://127.0.0.1:5500/styles.css` contained the rule. The browser was
+serving a stale copy. Response headers explain why:
+
+```
+Content-Length: 8304
+Content-Type:   text/css
+Date:           Thu, 30 Jul 2026 05:08:38 GMT
+Last-Modified:  Thu, 30 Jul 2026 04:11:51 GMT
+Server:         SimpleHTTP/0.6 Python/3.12.10
+```
+
+No `Cache-Control`, no `ETag`. With no explicit freshness information a browser
+falls back to *heuristic* caching (RFC 9111 §4.2.2) and reuses the cached file
+without revalidating. `python -m http.server` — which is how I had been serving
+the frontend — therefore makes any CSS or JS fix look like it did not work.
+
+This is worth recording because it is a **verification** failure, not an app
+failure: for a while I had a correct fix, a correct server, and a browser
+disagreeing with both. The earlier confirmation of the fix was only obtained by
+reassigning `link.href` with a cache-busting query string, which proved the CSS
+was right but did **not** prove a user reloading the page would get it.
+
+Fixed by adding `scripts/serve_frontend.py`, the same static server with
+`Cache-Control: no-store`:
+
+```
+Pragma:        no-cache
+Cache-Control: no-store, must-revalidate
+Expires:       0
+```
+
+Re-verified on a plain load, no cache-busting:
+
+```
+hiddenRuleOnPlainLoad: "[hidden] { display: none !important; }"
+1_onLoad:                     hidden
+2_afterNewTask:               VISIBLE
+3_afterX:                     hidden
+4_afterCancel:                hidden
+5_afterEscape:                hidden
+6_afterBackdropClick:         hidden
+7_clickInside_shouldStayOpen: VISIBLE
+```
+
+**The lesson:** "I verified the fix" has to mean verifying it the way a user
+receives it. A cache-busted reload and a normal reload are different tests, and
+only one of them was the one that mattered.
+
 ### Known gap
 
-There is no automated regression test for this. The project has no JavaScript
+There is no automated regression test for the modal close paths. The project has no JavaScript
 test setup, and adding jsdom or a browser-driver toolchain for one assertion is
 out of proportion to a course project of this size. So it is recorded honestly
 as a manual check (4.1–4.8) with a comment in `styles.css` explaining why the

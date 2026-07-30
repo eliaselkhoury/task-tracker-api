@@ -56,13 +56,22 @@ The frontend must be served over `http://`, not opened as a `file://` path —
 a `file://` page has a null origin and the browser blocks its API calls.
 
 Either open `frontend/index.html` with VS Code's **Live Server** extension
-(it uses port 5500), or serve the folder yourself:
+(it uses port 5500), or serve the folder with the included dev server:
 
 ```bash
-python -m http.server 5500 --directory frontend
+python scripts/serve_frontend.py
 ```
 
 Then open <http://127.0.0.1:5500>.
+
+> **Use one of those two, not `python -m http.server`.** `http.server` sends
+> `Last-Modified` but no `Cache-Control` and no `ETag`, so browsers apply
+> heuristic caching and serve a stale `styles.css` or `app.js` without
+> revalidating. You edit a file, reload, and see the old page — which is
+> indistinguishable from your change not working. `scripts/serve_frontend.py` is
+> the same static server with `Cache-Control: no-store` added; Live Server does
+> not have the problem either. If you do use `http.server`, hard-reload
+> (<kbd>Ctrl</kbd>+<kbd>F5</kbd>) after every edit.
 
 Both ports are pre-approved in `CORS_ORIGINS` (see `.env.example`). The
 frontend expects the API at `http://127.0.0.1:8000`, set in `API_BASE` at the
@@ -143,6 +152,7 @@ frontend/
   index.html  styles.css  app.js
 scripts/
   behavior_contract.py   diffable record of observable API behaviour
+  serve_frontend.py      static dev server with caching disabled
 tests/
   conftest.py            shared fixtures (isolated temp store per test)
   test_health.py         smoke tests
