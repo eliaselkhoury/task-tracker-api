@@ -77,6 +77,44 @@ Both ports are pre-approved in `CORS_ORIGINS` (see `.env.example`). The
 frontend expects the API at `http://127.0.0.1:8000`, set in `API_BASE` at the
 top of `frontend/app.js`.
 
+## Open in VS Code
+
+Open the `task-tracker-api` folder itself, not its parent — pytest discovery and
+the relative paths in `.vscode/` depend on it being the workspace root:
+
+```bash
+code task-tracker-api
+```
+
+`.vscode/` is committed, so on first open VS Code offers the three recommended
+extensions (Python, Pylance, Live Server), selects `venv` as the interpreter, and
+picks up these run configurations from the Run and Debug panel:
+
+| Configuration | What it does |
+| ------------- | ------------ |
+| **Backend + Frontend** | Compound — starts both servers, then open <http://127.0.0.1:5500> |
+| **Backend: uvicorn** | API on port 8000, no reloader (see the note below) |
+| **Backend: uvicorn --reload** | Same, with auto-reload |
+| **Frontend: dev server (no cache)** | `scripts/serve_frontend.py` on port 5500 |
+| **Behaviour contract** | Runs `scripts/behavior_contract.py` |
+| **Debug the current test file** | pytest on the open file, with breakpoints |
+
+`Ctrl+Shift+P` → *Tasks: Run Task* also has **Tests: run all** and
+**Contract: compare against the committed capture** (which should print nothing).
+
+Live Server is configured to serve `frontend/` as the site root, so the page is
+at `http://127.0.0.1:5500/` rather than `/frontend/index.html`.
+
+> **On `--reload`:** on the machine this was developed on, uvicorn's reloader
+> detected one file change and then silently stopped watching, so the server kept
+> serving stale code while pytest passed against the new code. The default
+> **Backend: uvicorn** config omits `--reload` for that reason. If a live
+> response ever disagrees with a passing test, restart the server before
+> suspecting your code.
+
+On macOS or Linux, change `python.defaultInterpreterPath` in
+`.vscode/settings.json` to `${workspaceFolder}/venv/bin/python`.
+
 ## Run the tests
 
 ```bash

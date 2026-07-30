@@ -1,0 +1,74 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Default backend config. Deliberately WITHOUT --reload: on this machine
+      // the reloader detected one change and then silently stopped watching, so
+      // the server kept serving stale code while pytest passed against the new
+      // code. Restarting (Ctrl+Shift+F5) is the reliable loop.
+      "name": "Backend: uvicorn",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      // Use this if you want auto-reload, but if a live response disagrees with
+      // a passing test, suspect a stale server before suspecting your code.
+      "name": "Backend: uvicorn --reload",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000",
+        "--reload"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      // Alternative to Live Server. Sends Cache-Control: no-store, so an edited
+      // styles.css or app.js is never served stale.
+      "name": "Frontend: dev server (no cache)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/serve_frontend.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Behaviour contract",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/scripts/behavior_contract.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Debug the current test file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-v"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ],
+  "compounds": [
+    {
+      // Start both servers at once, then open http://127.0.0.1:5500
+      "name": "Backend + Frontend",
+      "configurations": ["Backend: uvicorn", "Frontend: dev server (no cache)"],
+      "stopAll": true
+    }
+  ]
+}

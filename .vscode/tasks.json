@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Tests: run all",
+      "type": "shell",
+      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe -m pytest",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Tests: run all (verbose)",
+      "type": "shell",
+      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe -m pytest -v --no-header",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Contract: capture to file",
+      "detail": "Run the behaviour contract and write it to contract.txt for diffing around a refactor.",
+      "type": "shell",
+      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe scripts\\behavior_contract.py > contract.txt",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Contract: compare against the committed capture",
+      "detail": "Should print nothing. Any output means observable API behaviour changed.",
+      "type": "shell",
+      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe scripts\\behavior_contract.py > $env:TEMP\\contract-now.txt; Compare-Object (Get-Content docs\\midcourse\\contract-after-refactor.txt) (Get-Content $env:TEMP\\contract-now.txt)",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Deps: install requirements",
+      "type": "shell",
+      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ]
+}

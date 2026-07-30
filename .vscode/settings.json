@@ -1,0 +1,37 @@
+{
+  // Use the project venv, so `from app...` and fastapi resolve and the Testing
+  // panel can discover pytest. Overrides whatever global Python is on PATH.
+  // On macOS/Linux change this to ${workspaceFolder}/venv/bin/python.
+  "python.defaultInterpreterPath": "${workspaceFolder}/venv/Scripts/python.exe",
+
+  // Testing panel: pytest, rooted at tests/.
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+  "python.analysis.typeCheckingMode": "basic",
+
+  // Live Server serves frontend/ as the site root, so the page is at
+  // http://127.0.0.1:5500/ - port 5500 is already allowed in CORS_ORIGINS.
+  // Without the root setting it would serve the repo root and the page would be
+  // at /frontend/index.html instead.
+  "liveServer.settings.root": "/frontend",
+  "liveServer.settings.port": 5500,
+  "liveServer.settings.host": "127.0.0.1",
+
+  // Keep generated noise out of the file tree and search results.
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/.pytest_cache": true
+  },
+  "search.exclude": {
+    "venv": true,
+    "data": true
+  },
+
+  "[python]": {
+    "editor.rulers": [88],
+    "editor.formatOnSave": false
+  },
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true
+}
