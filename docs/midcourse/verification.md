@@ -40,27 +40,29 @@ clean (no errors, no warnings).
 
 ---
 
-## 2. Backend test results (after both features)
+## 2. Backend test results (current)
 
 ```bash
 pytest
 ```
 
 ```
-....................................................................     [100%]
-68 passed in 3.94s
+........................................................................ [ 79%]
+...................                                                      [100%]
+91 passed in 5.26s
 ```
 
 Per file:
 
-| File                            | Tests | Origin              |
-| ------------------------------- | ----: | ------------------- |
-| `tests/test_health.py`          |     2 | baseline            |
-| `tests/test_tasks_crud.py`      |    13 | baseline            |
-| `tests/test_business_rules.py`  |     5 | baseline            |
-| `tests/test_due_dates.py`       |    25 | **new — Feature 1** |
-| `tests/test_search_filters.py`  |    23 | **new — Feature 2** |
-| **Total**                       | **68** | 20 baseline + 48 new |
+| File                              | Tests | Origin                        |
+| --------------------------------- | ----: | ----------------------------- |
+| `tests/test_health.py`            |     2 | baseline                      |
+| `tests/test_tasks_crud.py`        |    13 | baseline                      |
+| `tests/test_business_rules.py`    |     5 | baseline                      |
+| `tests/test_due_dates.py`         |    25 | **new — Feature 1**           |
+| `tests/test_search_filters.py`    |    23 | **new — Feature 2**           |
+| `tests/test_update_null_fields.py`|    23 | **new — corruption fix (§7)** |
+| **Total**                         | **91** | 20 baseline + 71 new         |
 
 The brief asks for at least 4 new tests. There are 48. They are not padding —
 Break Test 2 below shows that 66 of the 68 pass while a real bug is present, and
@@ -465,19 +467,170 @@ a DOM test harness is the first thing it needs.
 
 ---
 
-## 7. Final state
+## 7. Data-corruption bug found in review (fixed)
+
+Reported by the instructor on resubmission: **`PATCH /tasks/{id}` with
+`{"title": null}` permanently corrupted `data/tasks.json`.**
+
+Reproduced before changing anything:
+
+```
+created           : Important task
+PATCH title=null  : 500
+raw file on disk  : null
+GET /tasks        : 500
+GET /tasks/{id}   : 500
+```
+
+### Why it was so damaging
+
+`update_task` mutated the record, wrote the file, and *then* built the response:
+
+```python
+record.update(changes)          # title -> None
+record["updated_at"] = ...
+_write_all(records)             # <- corruption persisted here
+return _to_response(record)     # <- only now does validation fail -> 500
+```
+
+`TaskUpdate.title` is `Optional[str]`, which means "may be omitted", not "may be
+null" — so `null` sailed through as a legitimate change. `TaskResponse.title` is
+a required `str`, so validation failed only on the way out, after the write. From
+then on every read of the file failed, and restarting the server did not help
+because the app reloads the same file. Recovery meant hand-editing JSON.
+
+### Blast radius was wider than reported
+
+I checked every updatable field rather than only the one named:
+
+| Field | PATCH | Later `GET /tasks` | On disk | |
+| --- | --- | --- | --- | --- |
+| `title` | 500 | **500** | `null` | as reported |
+| `priority` | 500 | **500** | `null` | **also broken, not reported** |
+| `status` | 500 | 200 | `"todo"` | crashed *before* the write, so no corruption |
+| `description` | 200 | 200 | `null` | correct — null is how you clear it |
+| `assignee` | 200 | 200 | `null` | correct |
+| `due_date` | 200 | 200 | `null` | correct |
+
+`priority` had exactly the same permanent-corruption behaviour. `status` was
+accidentally safe: `TaskStatus(None)` raised before `_write_all` was reached.
+
+### Fix — two independent layers
+
+**1. Reject explicit null at the model boundary** (`app/models.py`). A
+`model_validator(mode="before")` on `TaskUpdate` refuses `null` for `title`,
+`status` and `priority`, giving a clear **422** instead of a 500.
+
+**2. Validate the merged record before writing** (`app/storage.py`) — the layer
+the instructor asked for. `update_task` now builds a *candidate*, validates it,
+and only then assigns and saves:
+
+```python
+candidate = {**record, **changes, "updated_at": utc_now().isoformat()}
+try:
+    updated = _to_response(candidate)
+except ValidationError as exc:
+    raise InvalidTaskDataError(...) from exc
+if "status" in changes:
+    validate_status_transition(TaskStatus(record["status"]), updated.status)
+records[index] = candidate
+_write_all(records)
+```
+
+The stored record is untouched until validation passes. `add_task` validates
+before writing for the same reason. Transition checking now happens *after* shape
+validation, so `TaskStatus(None)` can no longer blow up.
+
+`InvalidTaskDataError` maps to 422 in `main.py`.
+
+### Verified
+
+After the fix, every field behaves correctly and the file is never touched by a
+rejected update:
+
+```
+title        PATCH=422  later GET=200  file-unchanged=True   on-disk="T"
+status       PATCH=422  later GET=200  file-unchanged=True   on-disk="todo"
+priority     PATCH=422  later GET=200  file-unchanged=True   on-disk="medium"
+description  PATCH=200  later GET=200  file-unchanged=False  on-disk=null
+assignee     PATCH=200  later GET=200  file-unchanged=False  on-disk=null
+due_date     PATCH=200  later GET=200  file-unchanged=False  on-disk=null
+```
+
+### Break Test 3 — proving the two layers are independent
+
+The storage guard must not depend on the model guard, or it is not really a
+second line of defence. I disabled the model validator and re-ran:
+
+```python
+if isinstance(data, dict) and False:  # BREAK TEST - model guard disabled
+```
+
+```
+--- model guard disabled: does the storage guard alone protect the file? ---
+title      PATCH=422  later GET=200  file-unchanged=True
+priority   PATCH=422  later GET=200  file-unchanged=True
+```
+
+Still 422, still no corruption. The storage guard holds on its own. Restored
+afterwards; suite green.
+
+### Tests added
+
+`tests/test_update_null_fields.py` — **23 tests**, run against the current code
+*before* the fix to confirm they actually caught it: **15 failed, 8 passed** (the
+8 were the nullable-field tests, which proved the fix must not over-tighten).
+After the fix: 23 passed. Suite went **68 → 91**.
+
+They assert three separate things, because "returns 422" alone would not have
+caught the real damage:
+
+- the request is rejected with 422, not 500
+- the store is **byte-for-byte unchanged** after a rejection
+- `GET /tasks` still works afterwards — the permanent-failure symptom
+
+Also covered: blank-string title, wrong-type title, and an illegal status
+transition (409) all leave the file untouched; clearing nullable fields still
+works; and a valid update still writes.
+
+### Why my own tests missed it
+
+Every earlier update test sent *valid* values. I tested that good input worked and
+that malformed input was rejected at the router, but never that a **well-formed
+request producing an invalid end state** left the store intact. The behaviour
+contract had the same gap — it never sent a null.
+
+The contract now has an `explicit nulls in PATCH` section recording status code,
+`store_unchanged`, and whether a later read still works, so a future refactor that
+reintroduces this shows up as a diff.
+
+> **Note on the capture files.** `contract-before-refactor.txt` and
+> `contract-after-refactor.txt` are frozen evidence for the section-4 refactor and
+> were produced by the script as it existed then. Since the script has gained the
+> null section, the live baseline is **`contract-current.txt`**, which is what the
+> VS Code *Contract: compare* task diffs against.
+
+---
+
+## 8. Final state
 
 ```bash
 pytest
 ```
 
 ```
-....................................................................     [100%]
-68 passed in 3.94s
+........................................................................ [ 79%]
+...................                                                      [100%]
+91 passed in 5.26s
 ```
 
-- `git status` clean; no break-test edits left behind.
-- Behaviour contract identical to the pre-refactor capture.
-- Browser console clean; both features usable in the UI.
+- `git status` clean; no break-test edits left behind (checked by grepping the
+  source for `BREAK TEST`).
+- Behaviour contract reproducible run-to-run and matching
+  `contract-current.txt`.
+- Browser console clean; both features usable in the UI; all modal close paths
+  work on a plain page load.
+- `PATCH` with an explicit null on a non-nullable field returns 422 and leaves
+  `data/tasks.json` byte-for-byte unchanged.
 - No secrets committed: `.env` is gitignored, only `.env.example` is tracked,
   and it contains no credentials. `data/` and `venv/` are gitignored.

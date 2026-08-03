@@ -13,6 +13,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from pydantic import ValidationError
+
 from app.business_rules import is_task_overdue, validate_status_transition
 from app.core.config import settings
 from app.models import (
@@ -27,6 +29,15 @@ from app.models import (
 
 class TaskNotFoundError(LookupError):
     """Raised when a task id does not exist in the store."""
+
+
+class InvalidTaskDataError(ValueError):
+    """Raised when a merged task record would not be a valid task.
+
+    Exists so a bad merge is reported as a client error instead of escaping as
+    an unhandled ValidationError, and - more importantly - so it can be raised
+    *before* anything is written to disk.
+    """
 
 
 def _data_file() -> Path:
@@ -67,17 +78,29 @@ def _to_response(record: dict[str, Any]) -> TaskResponse:
 
 
 def add_task(payload: TaskCreate) -> TaskResponse:
-    """Create a task, assign it an id and timestamps, and store it."""
+    """Create a task, assign it an id and timestamps, and store it.
+
+    Validated before writing, same rule as update_task: nothing invalid reaches
+    the file. TaskCreate already guarantees a good payload, so this is a
+    belt-and-braces check rather than a known failure path.
+    """
     now = utc_now()
     record = payload.model_dump(mode="json")
     record["id"] = str(uuid.uuid4())
     record["created_at"] = now.isoformat()
     record["updated_at"] = now.isoformat()
 
+    try:
+        created = _to_response(record)
+    except ValidationError as exc:
+        raise InvalidTaskDataError(
+            f"refusing to store an invalid task: {exc.errors()}"
+        ) from exc
+
     records = _read_all()
     records.append(record)
     _write_all(records)
-    return _to_response(record)
+    return created
 
 
 def list_tasks(
@@ -162,8 +185,15 @@ def update_task(task_id: str, payload: TaskUpdate) -> TaskResponse:
     their current values. A status change is checked against the transition
     rules before anything is written.
 
+    Nothing is written until the merged record has been validated, so a rejected
+    update leaves the store exactly as it was. The earlier version mutated the
+    record, saved it, and only then built the response - so an update that
+    produced an invalid task persisted the damage before failing, and every later
+    read of the file failed too.
+
     Raises:
         TaskNotFoundError: if no task has that id.
+        InvalidTaskDataError: if the merged record would not be a valid task.
         BusinessRuleError: if the requested status change is not allowed.
     """
     records = _read_all()
@@ -174,16 +204,29 @@ def update_task(task_id: str, payload: TaskUpdate) -> TaskResponse:
 
         changes = payload.model_dump(mode="json", exclude_unset=True)
 
-        if "status" in changes:
-            validate_status_transition(
-                TaskStatus(record["status"]), TaskStatus(changes["status"])
-            )
+        # Merge into a *candidate* and leave the stored record alone until the
+        # candidate is known to be good.
+        candidate = {
+            **record,
+            **changes,
+            "updated_at": utc_now().isoformat(),
+        }
 
-        record.update(changes)
-        record["updated_at"] = utc_now().isoformat()
-        records[index] = record
+        try:
+            updated = _to_response(candidate)
+        except ValidationError as exc:
+            raise InvalidTaskDataError(
+                f"the update would make this task invalid: {exc.errors()}"
+            ) from exc
+
+        # Checked after shape validation so `updated.status` is a real enum
+        # member rather than whatever arrived in the request body.
+        if "status" in changes:
+            validate_status_transition(TaskStatus(record["status"]), updated.status)
+
+        records[index] = candidate
         _write_all(records)
-        return _to_response(record)
+        return updated
 
     raise TaskNotFoundError(task_id)
 
