@@ -100,6 +100,9 @@ def update_task_route(task_id: str, payload: TaskUpdate) -> TaskResponse:
         return storage.update_task(task_id, payload)
     except storage.TaskNotFoundError:
         raise HTTPException(status_code=404, detail="task not found")
+    except storage.InvalidTaskDataError as exc:
+        # The merged task would have been invalid, so nothing was written.
+        raise HTTPException(status_code=422, detail=str(exc))
     except BusinessRuleError as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 

@@ -29,7 +29,7 @@
       "label": "Contract: compare against the committed capture",
       "detail": "Should print nothing. Any output means observable API behaviour changed.",
       "type": "shell",
-      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe scripts\\behavior_contract.py > $env:TEMP\\contract-now.txt; Compare-Object (Get-Content docs\\midcourse\\contract-after-refactor.txt) (Get-Content $env:TEMP\\contract-now.txt)",
+      "command": "${workspaceFolder}\\venv\\Scripts\\python.exe scripts\\behavior_contract.py > $env:TEMP\\contract-now.txt; Compare-Object (Get-Content docs\\midcourse\\contract-current.txt) (Get-Content $env:TEMP\\contract-now.txt)",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": { "executable": "powershell.exe", "args": ["-NoProfile", "-Command"] }

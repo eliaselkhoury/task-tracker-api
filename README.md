@@ -132,7 +132,7 @@ touches `data/tasks.json`.
 | POST   | `/tasks`          | Create a task. `201` on success, `422` on bad input. |
 | GET    | `/tasks`          | List tasks. Optional filters, combined with AND — see below. |
 | GET    | `/tasks/{id}`     | One task, or `404`.                                |
-| PATCH  | `/tasks/{id}`     | Partial update. `404` unknown id, `409` illegal status move. |
+| PATCH  | `/tasks/{id}`     | Partial update. `404` unknown id, `409` illegal status move, `422` invalid field value. |
 | DELETE | `/tasks/{id}`     | `204` on success, `404` unknown id.                |
 
 ### `GET /tasks` filters
@@ -160,6 +160,19 @@ Example: `GET /tasks?q=auth&status=todo&priority=high&overdue=true`
 A date in the past is accepted — that is the case the overdue badge exists to
 surface. On `PATCH`, sending `"due_date": null` clears it, while omitting the
 key leaves it unchanged.
+
+### What `null` means in a PATCH
+
+Only the genuinely optional fields can be cleared:
+
+| Field | `PATCH {"field": null}` |
+| ----- | ----------------------- |
+| `description`, `assignee`, `due_date` | `200` — the value is cleared |
+| `title`, `status`, `priority` | `422` — a task always has these; omit the key to leave one unchanged |
+
+A rejected update writes **nothing** to `data/tasks.json`. `update_task` builds
+the merged record, validates it, and only saves if validation passes — so a bad
+request can never leave a task on disk that later reads would choke on.
 
 `is_overdue` is **derived by the server on every read** and never stored:
 
@@ -213,8 +226,9 @@ The `mid-course-project` branch adds two features to the Module 1–3 baseline:
    combinable with status, priority, assignee and overdue, driven from a filter
    bar above the board.
 
-Both are usable in the frontend. The suite went from **20 to 68 tests**
-(48 new).
+Both are usable in the frontend. The suite went from **20 to 91 tests**
+(71 new) — 48 for the two features, plus 23 covering a data-corruption bug found
+in review and fixed (see §7 of `verification.md`).
 
 ### Documentation
 

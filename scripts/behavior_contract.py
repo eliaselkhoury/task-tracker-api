@@ -199,6 +199,39 @@ def main() -> None:
                 f"{task['title']:<26} status={task['status']:<12} "
                 f"due={rel(task['due_date']):<12} overdue={task['is_overdue']}"
             )
+        print()
+
+        # Runs last, on a throwaway task, so clearing the nullable fields does
+        # not disturb the query results above.
+        print("--- explicit nulls in PATCH ---")
+        print("(store_unchanged=True is the guarantee: a rejected update writes nothing)")
+        victim = client.post(
+            "/tasks",
+            json={
+                "title": "Null probe",
+                "description": "d",
+                "assignee": "a",
+                "due_date": iso(3),
+            },
+        ).json()["id"]
+
+        for field in [
+            "title",
+            "status",
+            "priority",
+            "description",
+            "assignee",
+            "due_date",
+        ]:
+            before = settings.data_file.read_bytes()
+            response = client.patch(f"/tasks/{victim}", json={field: None})
+            unchanged = settings.data_file.read_bytes() == before
+            later = client.get("/tasks")
+            print(
+                f"PATCH [{field + '=null':<18}] -> {response.status_code}  "
+                f"store_unchanged={str(unchanged):<5}  "
+                f"later GET /tasks -> {later.status_code}"
+            )
 
 
 if __name__ == "__main__":

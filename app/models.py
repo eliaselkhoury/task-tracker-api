@@ -10,7 +10,9 @@ from datetime import date, datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class TaskStatus(str, Enum):
@@ -89,6 +91,29 @@ class TaskUpdate(BaseModel):
     # entirely leaves it untouched. `exclude_unset` in storage.update_task is
     # what makes those two cases distinguishable.
     due_date: Optional[date] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_explicit_nulls(cls, data: Any) -> Any:
+        """Refuse `null` for fields a task always has.
+
+        Every field here is Optional, but that only means "may be omitted" - it
+        does not mean the underlying task field is nullable. Only description,
+        assignee and due_date can actually be cleared; a task always has a
+        title, a status and a priority.
+
+        Without this check, `{"title": null}` was accepted as a change, written
+        to the JSON store, and only then failed when the response model rejected
+        it - leaving a task on disk with a null title that made every subsequent
+        read fail. Rejecting it here turns that 500 into a 422.
+        """
+        if isinstance(data, dict):
+            for field in ("title", "status", "priority"):
+                if field in data and data[field] is None:
+                    raise ValueError(
+                        f"{field} cannot be null; omit the field to leave it unchanged"
+                    )
+        return data
 
     @field_validator("title")
     @classmethod
