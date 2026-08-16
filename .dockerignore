@@ -1,0 +1,48 @@
+# Anything listed here never enters the build context, so it cannot be COPYed
+# into the image even by mistake. That is the point of the first two blocks:
+# the safety check is enforced here, not by remembering to write careful COPYs.
+
+# Secrets and local runtime state
+.env
+.env.*
+!.env.example
+data/
+*.local.json
+
+# Local virtual environments - large, and built for Windows, so useless in a
+# Linux image even if they were copied.
+venv/
+.venv/
+env/
+
+# Version control and CI
+.git/
+.gitignore
+.github/
+
+# Python build noise
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+pytest.ini
+
+# Not needed by the running API: tests, dev scripts, the static frontend, the
+# editor config and the docs. Keeping them out is what makes the image small.
+tests/
+scripts/
+frontend/
+docs/
+.vscode/
+.claude/
+*.md
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+
+# Never ship an archive of the project inside the project
+*.zip
+Dockerfile
+.dockerignore
