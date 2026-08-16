@@ -52,9 +52,11 @@ contract output is unchanged.
 
 - **Workflow file:** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)
 - **Latest run:** **green** —
-  <https://github.com/eliaselkhoury/task-tracker-api/actions/runs/31939876107>
-  (run #3, commit `ae01dd5`). Both jobs passed: `pytest` in 12s and
-  `docker build + /health` in 18s.
+  <https://github.com/eliaselkhoury/task-tracker-api/actions/runs/31940098790>
+  (run #4, commit `8e6eddf`). Both jobs passed: `pytest` and
+  `docker build + /health`.
+- **Live status of every run on this branch** (so this link cannot go stale):
+  <https://github.com/eliaselkhoury/task-tracker-api/actions?query=branch%3Afinal-project>
 - **Test command used by CI:** `pytest -vv`
 - **Triggers:** `push` and `pull_request`, both unrestricted by branch.
 
