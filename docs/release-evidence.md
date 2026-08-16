@@ -156,7 +156,7 @@ worth reporting, including the four that were wrong.
 
 ## Repository hygiene
 
-- `git ls-files` lists **45** tracked files. No `.env`, no `data/`, no logs, no
+- `git ls-files` lists **48** tracked files. No `.env`, no `data/`, no logs, no
   credentials, no personal or customer data.
 - `data/tasks.json` is confirmed untracked via
   `git ls-files --error-unmatch data/tasks.json` (non-zero exit), and holds
