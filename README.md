@@ -8,6 +8,105 @@ frontend.
 - **Frontend** — one `index.html` / `styles.css` / `app.js`, no framework or build step.
 - **Tests** — pytest against the API through FastAPI's `TestClient`.
 
+---
+
+## Final Project
+
+Branch reviewed: **`final-project`**
+
+### What this submission demonstrates
+
+- The existing Task Tracker still runs, inside the intended course scope. No
+  product feature was added; `scripts/behavior_contract.py` produces output
+  identical to the committed capture in
+  [docs/midcourse/contract-current.txt](docs/midcourse/contract-current.txt),
+  apart from the 3-byte UTF-8 BOM that capture carries from having been written
+  by PowerShell.
+- CI runs the pytest suite on push and on pull request.
+- The Docker image builds and runs, with `/health` returning `200`.
+- AI review, security and ownership evidence is in `docs/`.
+
+### How to run locally
+
+```bash
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app
+```
+
+(macOS/Linux: `source venv/bin/activate`.) The API is then on
+<http://127.0.0.1:8000>, and `/health` returns
+`{"status":"ok","service":"task-tracker-api"}`.
+
+For the board, serve the frontend in a second terminal and open
+<http://127.0.0.1:5500>:
+
+```bash
+python scripts/serve_frontend.py
+```
+
+### How to run tests
+
+```bash
+pytest
+```
+
+91 tests. Each one runs against its own temporary JSON store, so the suite never
+touches `data/tasks.json`.
+
+### How to run with Docker
+
+```bash
+docker build -t task-tracker-api .
+```
+
+```bash
+docker run --rm -p 8000:8000 --name task-tracker task-tracker-api
+```
+
+```bash
+curl -i http://127.0.0.1:8000/health
+```
+
+On Windows PowerShell, `curl` is an alias for `Invoke-WebRequest`, so use:
+
+```bash
+(Invoke-WebRequest http://127.0.0.1:8000/health).StatusCode
+```
+
+The image is the **API only**. The frontend is static and is served separately,
+exactly as it is in local development — making FastAPI serve it would be a
+product change, and this project does not add features. Tasks created inside the
+container live in the container and disappear with `--rm`; mount a volume with
+`-v "${PWD}/data:/app/data"` if you want them to survive.
+
+### Evidence files
+
+- [docs/release-evidence.md](docs/release-evidence.md) — baseline, CI, Docker,
+  and the documentation claim-vs-reality log.
+- [docs/final-ai-review.md](docs/final-ai-review.md) — graded AI code review and
+  security review, the manual checks, and the ownership statement.
+- [docs/ai-playbook.md](docs/ai-playbook.md) — the rules I will use with AI after
+  the course.
+
+### AI assistance summary
+
+AI helped draft or review: the CI workflow, the Dockerfile and `.dockerignore`,
+`AGENTS.md`, the documentation, and two read-only review passes (code review of
+the release diff, and a security review of the repo).
+
+I verified the work by: running the full pytest suite (91 passed), curling
+`/health`, opening the board and exercising the create/edit modal, diffing
+`scripts/behavior_contract.py` output against the committed capture, building and
+running the container, watching CI go green, and re-deriving every AI finding
+against the actual file before recording a grade for it.
+
+One AI suggestion I rejected or corrected: see the "One AI output I rejected or
+corrected" section of [docs/final-ai-review.md](docs/final-ai-review.md).
+
+---
+
 ## Requirements
 
 - Python 3.12+
@@ -205,13 +304,22 @@ scripts/
   behavior_contract.py   diffable record of observable API behaviour
   serve_frontend.py      static dev server with caching disabled
 tests/
-  conftest.py            shared fixtures (isolated temp store per test)
-  test_health.py         smoke tests
-  test_tasks_crud.py     CRUD contract
-  test_business_rules.py status transitions
-  test_due_dates.py      due dates + overdue filter
-  test_search_filters.py search + combined filters
-docs/midcourse/          mid-course project documentation
+  conftest.py                 shared fixtures (isolated temp store per test)
+  test_health.py              smoke tests
+  test_tasks_crud.py          CRUD contract
+  test_business_rules.py      status transitions
+  test_due_dates.py           due dates + overdue filter
+  test_search_filters.py      search + combined filters
+  test_update_null_fields.py  what null means in a PATCH
+docs/
+  midcourse/                  mid-course project documentation
+  release-evidence.md         final project: baseline, CI, Docker, doc claims
+  final-ai-review.md          final project: graded AI review + ownership
+  ai-playbook.md              final project: my rules for working with AI
+.github/workflows/ci.yml      pytest on push and pull request
+Dockerfile                    API-only image, non-root
+.dockerignore                 keeps .env, data/, venv/ out of the build context
+AGENTS.md                     guardrails for AI agents working in this repo
 ```
 
 ---

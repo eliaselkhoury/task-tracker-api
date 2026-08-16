@@ -20,10 +20,18 @@ env/
 .gitignore
 .github/
 
-# Python build noise
-__pycache__/
-*.py[cod]
-*.egg-info/
+# Python build noise.
+#
+# These need the `**/` prefix, unlike the same three patterns in .gitignore.
+# Git treats a pattern with no embedded slash as matching at any depth; Docker
+# matches against the path relative to the context root and `*` does not cross
+# `/`. Without `**/`, `__pycache__/` excluded only a root-level ./__pycache__
+# and the four nested caches under app/ were copied into the image by
+# `COPY app/ ./app/` - Windows-built .pyc files shipped into a Linux image that
+# sets PYTHONDONTWRITEBYTECODE=1.
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
 .pytest_cache/
 pytest.ini
 

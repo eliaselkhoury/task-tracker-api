@@ -34,9 +34,15 @@ COPY app/ ./app/
 #
 # Non-root: if the app is ever exploited, the attacker lands as `appuser`, not
 # as root inside the container.
+#
+# Only /app/data is handed to appuser. An earlier version did
+# `chown -R appuser:appuser /app`, which also gave the runtime user write
+# access to its own source - so anything able to write a file could rewrite
+# app/main.py and have it executed on the next restart. The source stays
+# root-owned and world-readable, which is all the app needs to import it.
 RUN mkdir -p /app/data \
     && useradd --create-home --uid 1000 appuser \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app/data
 USER appuser
 
 EXPOSE 8000

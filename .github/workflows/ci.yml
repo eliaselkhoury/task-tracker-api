@@ -7,10 +7,18 @@ on:
   push:
   pull_request:
 
+# The workflow only reads the code and runs tests. Declaring this explicitly
+# means the job keeps a read-only GITHUB_TOKEN even if the repository default
+# is later changed to read/write.
+permissions:
+  contents: read
+
 jobs:
   tests:
     name: pytest
     runs-on: ubuntu-latest
+    # A hung test should fail in minutes, not sit on GitHub's 6-hour default.
+    timeout-minutes: 10
 
     steps:
       - name: Check out the repository
@@ -36,5 +44,75 @@ jobs:
 
       # No continue-on-error, no `|| true`, no `if:` guard. A failing test is a
       # failing build - that is the only reason this workflow exists.
+      #
+      # `-vv`, not `-v`: pytest.ini sets `addopts = -q`, and pytest's verbosity
+      # is a counter, so `-q -v` nets to zero and the CI log showed dots rather
+      # than test names. `-vv` nets to +1 and actually names each test, which is
+      # the whole point of running it verbosely in CI.
       - name: Run the test suite
-        run: pytest -v
+        run: pytest -vv
+
+  # Docker is verified here rather than on the development machine: that machine
+  # is Windows 11 without WSL2, and Docker Desktop's Linux engine cannot start
+  # without it (installing WSL2 needs administrator rights and a reboot). Every
+  # step below is the same command a teammate would run locally, and the job
+  # fails if the container does not answer /health with a 200.
+  docker:
+    name: docker build + /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t task-tracker-api:ci .
+
+      - name: Run the container
+        run: docker run -d --name task-tracker -p 8000:8000 task-tracker-api:ci
+
+      # --retry-connrefused covers the second or two the server needs to bind,
+      # without a `|| true` that would hide a genuine failure. `test` at the end
+      # is what fails the job: a 500 or a 404 is not a pass.
+      - name: Verify /health returns 200
+        run: |
+          code=$(curl --silent --show-error \
+                      --retry 30 --retry-delay 1 --retry-connrefused \
+                      --output /tmp/health.json --write-out '%{http_code}' \
+                      http://127.0.0.1:8000/health)
+          echo "HTTP status: $code"
+          echo "body: $(cat /tmp/health.json)"
+          test "$code" = "200"
+          test "$(cat /tmp/health.json)" = '{"status":"ok","service":"task-tracker-api"}'
+
+      # The three safety properties the Dockerfile claims for itself, checked
+      # against the built image instead of taken on trust.
+      - name: Docker safety checks
+        run: |
+          echo "--- the process must not be root ---"
+          docker exec task-tracker id
+          test "$(docker exec task-tracker id -u)" != "0"
+
+          echo "--- no .env, no data store, no venv, no .git baked into the image ---"
+          docker run --rm task-tracker-api:ci \
+            sh -c 'ls -A /app; echo "---"; find /app -maxdepth 2 \
+                   \( -name ".env*" -o -name ".git" -o -name "venv" -o -name "tasks.json" \) -print'
+          test -z "$(docker run --rm task-tracker-api:ci \
+                     sh -c 'find /app -maxdepth 2 \( -name ".env*" -o -name ".git" -o -name "venv" \) -print')"
+
+          echo "--- the non-root user can actually write its own store ---"
+          curl --silent --show-error --fail \
+               -X POST http://127.0.0.1:8000/tasks \
+               -H 'Content-Type: application/json' \
+               -d '{"title":"container write check"}'
+          echo
+          echo "--- image size ---"
+          docker image ls task-tracker-api:ci
+
+      # The only `if:` in this workflow, and it cannot hide a failure: it makes
+      # the logs print *even when* an earlier step already failed the job. It
+      # guards a diagnostic step, never a verification one.
+      - name: Container logs
+        if: always()
+        run: docker logs task-tracker

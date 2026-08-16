@@ -10,7 +10,11 @@ venv/
 env/
 
 # Environment / secrets
+# `.env.*` as well as `.env`, so a .env.local or .env.production cannot be
+# committed by accident; .env.example is the one deliberate exception.
 .env
+.env.*
+!.env.example
 
 # Local JSON data store (runtime state, not source)
 data/
