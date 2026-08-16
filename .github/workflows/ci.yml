@@ -22,13 +22,13 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Pinned to 3.12 - the version the project is developed against and the
       # one in the Dockerfile. "3.x" would let a future release change the
       # runtime under the suite without a commit explaining why.
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -64,7 +64,7 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build the image
         run: docker build -t task-tracker-api:ci .
@@ -72,19 +72,38 @@ jobs:
       - name: Run the container
         run: docker run -d --name task-tracker -p 8000:8000 task-tracker-api:ci
 
-      # --retry-connrefused covers the second or two the server needs to bind,
-      # without a `|| true` that would hide a genuine failure. `test` at the end
-      # is what fails the job: a 500 or a 404 is not a pass.
-      - name: Verify /health returns 200
+      # Diagnostics first, so a failure below is readable from the log without
+      # re-running anything.
+      - name: Container state
         run: |
-          code=$(curl --silent --show-error \
-                      --retry 30 --retry-delay 1 --retry-connrefused \
-                      --output /tmp/health.json --write-out '%{http_code}' \
+          docker ps -a --filter name=task-tracker \
+            --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+
+      # `--retry-all-errors` as well as `--retry-connrefused`. With -p 8000:8000
+      # docker's userland proxy binds the host port immediately, so while uvicorn
+      # is still starting the connection is ACCEPTED and then RESET rather than
+      # refused - curl exit 56. `--retry-connrefused` does not cover a reset, so
+      # curl gave up on the first attempt and the job failed with exit 56 (run #2,
+      # 31938756176). `--retry-all-errors` makes the retry budget apply to that
+      # case too. Still no `|| true` and no continue-on-error: HTTP status codes
+      # are not curl errors, so a 500 is not retried away - it falls through to
+      # the asserts below and fails the job.
+      - name: Wait for the container to answer
+        run: |
+          curl --silent --show-error \
+               --retry 30 --retry-delay 1 --retry-connrefused --retry-all-errors \
+               --output /tmp/health.json --write-out 'HTTP %{http_code}\n' \
+               http://127.0.0.1:8000/health
+
+      - name: Assert /health is 200 with the expected body
+        run: |
+          code=$(curl --silent --output /tmp/health.json --write-out '%{http_code}' \
                       http://127.0.0.1:8000/health)
-          echo "HTTP status: $code"
-          echo "body: $(cat /tmp/health.json)"
+          body=$(cat /tmp/health.json)
+          echo "status: $code"
+          echo "body:   $body"
           test "$code" = "200"
-          test "$(cat /tmp/health.json)" = '{"status":"ok","service":"task-tracker-api"}'
+          test "$body" = '{"status":"ok","service":"task-tracker-api"}'
 
       # The three safety properties the Dockerfile claims for itself, checked
       # against the built image instead of taken on trust.
