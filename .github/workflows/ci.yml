@@ -1,0 +1,137 @@
+name: CI
+
+# Push covers work pushed straight to a branch; pull_request covers the merge
+# commit a PR would actually produce, which is not the same tree. Both, so a
+# branch cannot be green on its own and red once merged.
+on:
+  push:
+  pull_request:
+
+# The workflow only reads the code and runs tests. Declaring this explicitly
+# means the job keeps a read-only GITHUB_TOKEN even if the repository default
+# is later changed to read/write.
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: pytest
+    runs-on: ubuntu-latest
+    # A hung test should fail in minutes, not sit on GitHub's 6-hour default.
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # Pinned to 3.12 - the version the project is developed against and the
+      # one in the Dockerfile. "3.x" would let a future release change the
+      # runtime under the suite without a commit explaining why.
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      # Real install of the pinned dependencies. If this fails the job fails;
+      # there is no fallback that would let the suite run against whatever
+      # happened to be on the image.
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # No continue-on-error, no `|| true`, no `if:` guard. A failing test is a
+      # failing build - that is the only reason this workflow exists.
+      #
+      # `-vv`, not `-v`: pytest.ini sets `addopts = -q`, and pytest's verbosity
+      # is a counter, so `-q -v` nets to zero and the CI log showed dots rather
+      # than test names. `-vv` nets to +1 and actually names each test, which is
+      # the whole point of running it verbosely in CI.
+      - name: Run the test suite
+        run: pytest -vv
+
+  # Docker is verified here rather than on the development machine: that machine
+  # is Windows 11 without WSL2, and Docker Desktop's Linux engine cannot start
+  # without it (installing WSL2 needs administrator rights and a reboot). Every
+  # step below is the same command a teammate would run locally, and the job
+  # fails if the container does not answer /health with a 200.
+  docker:
+    name: docker build + /health
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Build the image
+        run: docker build -t task-tracker-api:ci .
+
+      - name: Run the container
+        run: docker run -d --name task-tracker -p 8000:8000 task-tracker-api:ci
+
+      # Diagnostics first, so a failure below is readable from the log without
+      # re-running anything.
+      - name: Container state
+        run: |
+          docker ps -a --filter name=task-tracker \
+            --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'
+
+      # `--retry-all-errors` as well as `--retry-connrefused`. With -p 8000:8000
+      # docker's userland proxy binds the host port immediately, so while uvicorn
+      # is still starting the connection is ACCEPTED and then RESET rather than
+      # refused - curl exit 56. `--retry-connrefused` does not cover a reset, so
+      # curl gave up on the first attempt and the job failed with exit 56 (run #2,
+      # 31938756176). `--retry-all-errors` makes the retry budget apply to that
+      # case too. Still no `|| true` and no continue-on-error: HTTP status codes
+      # are not curl errors, so a 500 is not retried away - it falls through to
+      # the asserts below and fails the job.
+      - name: Wait for the container to answer
+        run: |
+          curl --silent --show-error \
+               --retry 30 --retry-delay 1 --retry-connrefused --retry-all-errors \
+               --output /tmp/health.json --write-out 'HTTP %{http_code}\n' \
+               http://127.0.0.1:8000/health
+
+      - name: Assert /health is 200 with the expected body
+        run: |
+          code=$(curl --silent --output /tmp/health.json --write-out '%{http_code}' \
+                      http://127.0.0.1:8000/health)
+          body=$(cat /tmp/health.json)
+          echo "status: $code"
+          echo "body:   $body"
+          test "$code" = "200"
+          test "$body" = '{"status":"ok","service":"task-tracker-api"}'
+
+      # The three safety properties the Dockerfile claims for itself, checked
+      # against the built image instead of taken on trust.
+      - name: Docker safety checks
+        run: |
+          echo "--- the process must not be root ---"
+          docker exec task-tracker id
+          test "$(docker exec task-tracker id -u)" != "0"
+
+          echo "--- no .env, no data store, no venv, no .git baked into the image ---"
+          docker run --rm task-tracker-api:ci \
+            sh -c 'ls -A /app; echo "---"; find /app -maxdepth 2 \
+                   \( -name ".env*" -o -name ".git" -o -name "venv" -o -name "tasks.json" \) -print'
+          test -z "$(docker run --rm task-tracker-api:ci \
+                     sh -c 'find /app -maxdepth 2 \( -name ".env*" -o -name ".git" -o -name "venv" \) -print')"
+
+          echo "--- the non-root user can actually write its own store ---"
+          curl --silent --show-error --fail \
+               -X POST http://127.0.0.1:8000/tasks \
+               -H 'Content-Type: application/json' \
+               -d '{"title":"container write check"}'
+          echo
+          echo "--- image size ---"
+          docker image ls task-tracker-api:ci
+
+      # The only `if:` in this workflow, and it cannot hide a failure: it makes
+      # the logs print *even when* an earlier step already failed the job. It
+      # guards a diagnostic step, never a verification one.
+      - name: Container logs
+        if: always()
+        run: docker logs task-tracker

@@ -185,24 +185,38 @@ function dueDateBadge(task) {
     : `<span class="pill pill-due">Due ${label}</span>`;
 }
 
+/**
+ * One card's markup. Everything interpolated here lands in `innerHTML`
+ * (see `render`), so every value that came from the API is escaped —
+ * including `id` and `priority`.
+ *
+ * Those two are not attacker-controllable today: `id` is a server-assigned
+ * uuid4 (an `id` sent to POST /tasks is ignored, and PATCH cannot change it),
+ * and `priority` is a Pydantic enum that rejects anything else with a 422.
+ * But `TaskResponse.id` is an unconstrained `str`, so a hand-edited
+ * data/tasks.json would reach this template — and "the model happens to
+ * validate it upstream" is a fragile reason to leave a sink unescaped. For a
+ * uuid and an enum member `escapeHtml` is a no-op, so this costs nothing.
+ */
 function cardHtml(task) {
   const description = task.description
     ? escapeHtml(task.description)
     : "No description";
+  const id = escapeHtml(task.id);
 
   return `
-    <article class="card${task.is_overdue ? " is-overdue" : ""}" draggable="true" data-id="${task.id}">
+    <article class="card${task.is_overdue ? " is-overdue" : ""}" draggable="true" data-id="${id}">
       <h3 class="card-title">${escapeHtml(task.title)}</h3>
       <p class="card-description">${description}</p>
       <div class="card-meta">
         <div class="card-badges">
-          <span class="pill pill-${task.priority}">${PRIORITY_LABELS[task.priority]}</span>
+          <span class="pill pill-${escapeHtml(task.priority)}">${PRIORITY_LABELS[task.priority]}</span>
           ${dueDateBadge(task)}
           ${task.assignee ? `<span class="card-assignee">${escapeHtml(task.assignee)}</span>` : ""}
         </div>
         <div class="card-actions">
-          <button class="button button-small" data-action="edit" data-id="${task.id}">Edit</button>
-          <button class="button button-small button-danger" data-action="delete" data-id="${task.id}">Delete</button>
+          <button class="button button-small" data-action="edit" data-id="${id}">Edit</button>
+          <button class="button button-small button-danger" data-action="delete" data-id="${id}">Delete</button>
         </div>
       </div>
     </article>

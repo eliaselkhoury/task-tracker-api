@@ -1,0 +1,20 @@
+# This repo is developed on Windows (core.autocrlf=true) but CI and the Docker
+# image both run on Linux. Without this file, whether a checked-out Dockerfile
+# or workflow has CRLF line endings depends on each teammate's git config —
+# and a stray \r inside a `RUN ... \` continuation or a `run: |` block is a
+# shell error that only appears on someone else's machine.
+#
+# Let git normalise text to LF in the repository...
+* text=auto eol=lf
+
+# ...and pin LF in the working copy for everything Linux executes or parses.
+Dockerfile      text eol=lf
+.dockerignore   text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.py            text eol=lf
+*.sh            text eol=lf
+
+# Windows-only helpers stay CRLF.
+*.bat           text eol=crlf
+*.cmd           text eol=crlf

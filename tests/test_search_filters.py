@@ -1,12 +1,20 @@
 """Feature 2 - text search and combined filters on GET /tasks."""
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 
 def iso(value: date) -> str:
     return value.isoformat()
+
+
+def server_today() -> date:
+    """The UTC date, which is what the server compares due dates against.
+
+    Not `server_today()` - see the same helper in test_due_dates.py for why.
+    """
+    return datetime.now(timezone.utc).date()
 
 
 @pytest.fixture
@@ -174,7 +182,7 @@ def test_search_combines_with_overdue(board, client, make_task):
     make_task(
         title="Overdue sign-off chase",
         description="Chase the sign-off.",
-        due_date=iso(date.today() - timedelta(days=2)),
+        due_date=iso(server_today() - timedelta(days=2)),
     )
 
     response = client.get("/tasks", params={"q": "sign-off", "overdue": "true"})
@@ -189,7 +197,7 @@ def test_all_five_filters_at_once(board, client, make_task):
         priority="high",
         status="in_progress",
         assignee="Maria",
-        due_date=iso(date.today() - timedelta(days=1)),
+        due_date=iso(server_today() - timedelta(days=1)),
     )
 
     response = client.get(

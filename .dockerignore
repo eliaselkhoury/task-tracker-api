@@ -1,0 +1,56 @@
+# Anything listed here never enters the build context, so it cannot be COPYed
+# into the image even by mistake. That is the point of the first two blocks:
+# the safety check is enforced here, not by remembering to write careful COPYs.
+
+# Secrets and local runtime state
+.env
+.env.*
+!.env.example
+data/
+*.local.json
+
+# Local virtual environments - large, and built for Windows, so useless in a
+# Linux image even if they were copied.
+venv/
+.venv/
+env/
+
+# Version control and CI
+.git/
+.gitignore
+.github/
+
+# Python build noise.
+#
+# These need the `**/` prefix, unlike the same three patterns in .gitignore.
+# Git treats a pattern with no embedded slash as matching at any depth; Docker
+# matches against the path relative to the context root and `*` does not cross
+# `/`. Without `**/`, `__pycache__/` excluded only a root-level ./__pycache__
+# and the four nested caches under app/ were copied into the image by
+# `COPY app/ ./app/` - Windows-built .pyc files shipped into a Linux image that
+# sets PYTHONDONTWRITEBYTECODE=1.
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+.pytest_cache/
+pytest.ini
+
+# Not needed by the running API: tests, dev scripts, the static frontend, the
+# editor config and the docs. Keeping them out is what makes the image small.
+tests/
+scripts/
+frontend/
+docs/
+.vscode/
+.claude/
+*.md
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+
+# Never ship an archive of the project inside the project
+*.zip
+Dockerfile
+.dockerignore
